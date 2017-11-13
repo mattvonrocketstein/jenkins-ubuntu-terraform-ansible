@@ -1,0 +1,69 @@
+#
+# Provisioning for the Jenkins instance in AWS
+#
+- hosts: all
+  become: yes
+  become_method: sudo
+  gather_facts: no
+  vars:
+    deploy_user: ubuntu
+    deploy_home: "/home/{{deploy_user}}"
+    code_home: "{{deploy_home}}/code"
+  pre_tasks:
+    - name: Update apt cache
+      apt: upgrade=no update_cache=yes cache_valid_time=999999
+  tasks:
+
+    # Common packages on the host
+    - include: tasks/common.yml
+
+    # Install docker if it's not installed.
+    # (nevermind the ansible role, opt for explicit)
+    - name: Looking for docker
+      stat: path=/usr/bin/docker
+      register: look_for_docker
+    - name: Install docker it's not already present
+      include: tasks/docker.yml
+      when: look_for_docker.stat.exists == False
+    - name: Install docker-compose
+      pip:
+        name: docker-compose==1.15.0
+    - name: Add deploy user to docker group
+      user:
+        name: "{{deploy_user}}"
+        groups: docker
+        append: yes
+
+    # bootstrap jenkins itself
+    - include: tasks/jenkins.yml
+      vars:
+        jenkins_rebuild: yes
+        jenkins_docker_image: "jenkins:2.60.2-alpine"
+
+        # APK stuff available inside the jenkins docker
+        jenkins_apk_packages:
+          - py-virtualenv
+          - python-dev
+          - libffi
+          - libffi-dev
+          - g++
+          - gcc
+          - libxml2-dev
+          - libxslt-dev
+          - musl-dev
+          - postgresql-dev
+
+        # pip stuff that will be available inside the jenkins docker
+        jenkins_pip_packages:
+          - numpy==1.13.1
+          - lxml==3.8.0
+
+        # plugins that will be automatically installed.
+        jenkins_plugins:
+          - blueocean:1.1.7 matrix-auth
+          - ansicolor:0.5.2 ansible:0.6.2
+          - rebuild:1.25 shiningpanda
+          - workflow-aggregator:2.5 ws-cleanup:0.34
+          - htmlpublisher:1.14 ssh-agent
+          - next-executions
+          - slack:2.3
