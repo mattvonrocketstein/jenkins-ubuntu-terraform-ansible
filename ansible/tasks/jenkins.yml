@@ -1,0 +1,89 @@
+- name: Make jenkins docker volumes with shell
+  shell: "mkdir -p {{deploy_home}}/jenkins"
+
+- name: Make ~jenkins/.aws
+  shell: "mkdir -p {{deploy_home}}/jenkins/.aws;"
+
+- name: Copy Dockerfile.jenkins
+  copy:
+    content: |
+      FROM jenkins/{{jenkins_docker_image}}
+      USER root
+      RUN apk add --update ansible tree make bash
+      RUN apk add docker py-pip && \
+        pip install docker-compose && \
+        addgroup jenkins docker
+      RUN apk add --update {{jenkins_apk_packages|join(" ")}}
+      RUN pip install {{jenkins_pip_packages|join(" ")}}
+      RUN /usr/local/bin/install-plugins.sh {{jenkins_plugins|join(" ")}}
+      ENV JAVA_OPTS -Djenkins.install.runSetupWizard=false
+      COPY jenkins-default-user.groovy /usr/share/jenkins/ref/init.groovy.d/
+      VOLUME /var/jenkins_home
+    dest: "{{deploy_home}}/Dockerfile.jenkins"
+
+# This is for docker-in-docker volumes to work correctly
+- name: Link inside-docker dir to same on host
+  file:
+    state: link
+    src: "{{deploy_home}}/jenkins"
+    dest: /var/jenkins_home
+
+# - name: Example script for jenkins bootstrap from groovy
+#   copy:
+#     content: |
+#       user.groovy
+#       import jenkins.model.*
+#       import hudson.security.*
+#       def env = System.getenv()
+#       def jenkins = Jenkins.getInstance()
+#       jenkins.setSecurityRealm(new HudsonPrivateSecurityRealm(false))
+#       jenkins.setAuthorizationStrategy(new GlobalMatrixAuthorizationStrategy())
+#       def user = jenkins.getSecurityRealm().createAccount(env.JENKINS_USER, env.JENKINS_PASS)
+#       user.save()
+#       jenkins.getAuthorizationStrategy().add(Jenkins.ADMINISTER, env.JENKINS_USER)
+#       jenkins.save()
+#     dest: "{{deploy_home}}/jenkins-default-user.groovy"
+
+- name: Create docker-compose.yml
+  copy:
+    dest: "{{deploy_home}}/docker-compose.yml"
+    content: |
+      version: '2.1'
+      services:
+        jenkins:
+          privileged: true
+          container_name: jenkins
+          build:
+            context: .
+            dockerfile: Dockerfile.jenkins
+          ports:
+            - 80:8080
+          volumes:
+            - {{deploy_home}}/jenkins:/var/jenkins_home
+            - /var/run/docker.sock:/var/run/docker.sock
+
+- name: Stop jenkins docker
+  shell: docker-compose stop
+
+- name: Build jenkins docker
+  shell: docker-compose build
+  when: jenkins_rebuild
+
+- name: Install supervisord (for jenkins)
+  apt:
+    name: supervisor
+    state: present
+
+- name: Copy supervisor config (for jenkins)
+  copy:
+    dest: /etc/supervisor/conf.d/jenkins.conf
+    content: |
+      [program:jenkins]
+      command=docker-compose up jenkins
+      directory={{deploy_home}}
+      autostart=true
+      autorestart=false
+      startretries=1
+      user=root
+
+- include: tasks/supervisor-reload.yml

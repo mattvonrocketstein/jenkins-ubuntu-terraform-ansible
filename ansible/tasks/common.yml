@@ -1,0 +1,27 @@
+#
+# Common tasks
+#
+- name: Make directories
+  file:
+    path: "{{item}}"
+    state: directory
+    mode: "u=rw,g=r,o=r"
+    owner: "{{deploy_user}}"
+    group: "{{deploy_user}}"
+  with_items:
+    - "{{deploy_home}}/bin"
+    - "{{deploy_home}}/venv"
+    - "{{code_home}}"
+    - "{{deploy_home}}/data/"
+    - "{{deploy_home}}/logs/"
+  become_user: "{{deploy_user}}"
+
+- name: Install System Packages (common)
+  apt:
+    name: "{{item}}"
+    state: present
+  with_items:
+    - python-virtualenv
+    - htop
+    - tree
+    - ack-grep
