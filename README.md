@@ -14,7 +14,7 @@
   <tr>
     <td width=15%><img src=img/icon.png style="width:150px"></td>
     <td>
-    This repo describes infracode for bootstrapping a dockerized Jenkins with ansible and Terraform.
+    This repo describes infracode for bootstrapping a dockerized Jenkins on EC2 with Ansible and Terraform.
     </td>
   </tr>
 </table>
